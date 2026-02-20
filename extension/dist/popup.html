@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Product Analyzer</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <!-- Главный экран -->
+  <div id="screen-main" class="screen" style="display: flex;">
+    <div class="header">
+      <div class="header-logo">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span>Product Analyzer</span>
+      </div>
+      <button id="btn-settings" class="btn-icon" title="Настройки">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </div>
+
+    <div class="main-content">
+      <div id="status-text" class="status-text status-info">Проверяю страницу...</div>
+
+      <div class="actions">
+        <button id="btn-select" class="btn btn-primary" disabled>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          Выбрать товары
+        </button>
+
+        <button id="btn-analyze" class="btn btn-success" disabled>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          Анализировать
+        </button>
+      </div>
+
+      <div id="products-preview" class="products-preview" style="display: none;">
+        <div class="preview-header">
+          <span class="preview-title">Найдено товаров:</span>
+          <span id="products-count" class="preview-count"></span>
+        </div>
+        <div id="preview-list" class="preview-list"></div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <span>exist.ru • ИИ-анализ цена/качество</span>
+    </div>
+  </div>
+
+  <!-- Экран загрузки -->
+  <div id="screen-loading" class="screen" style="display: none;">
+    <div class="loading-content">
+      <div class="spinner"></div>
+      <div class="loading-title">Анализирую товары...</div>
+      <div id="loading-count" class="loading-subtitle"></div>
+      <div class="loading-hint">DeepSeek AI оценивает цену/качество</div>
+    </div>
+  </div>
+
+  <!-- Экран результатов -->
+  <div id="screen-results" class="screen" style="display: none;">
+    <div class="results-header">
+      <button id="btn-back-results" class="btn-icon btn-back">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M19 12H5m0 0l7 7m-7-7l7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <span class="results-title">Результаты анализа</span>
+    </div>
+    <div class="results-body">
+      <div id="results-summary"></div>
+      <div id="results-list"></div>
+    </div>
+  </div>
+
+  <!-- Экран настроек -->
+  <div id="screen-settings" class="screen" style="display: none;">
+    <div class="settings-header">
+      <button id="btn-back-settings" class="btn-icon btn-back">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M19 12H5m0 0l7 7m-7-7l7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <span class="settings-title">Настройки</span>
+    </div>
+    <div class="settings-body">
+      <div class="settings-section">
+        <label class="settings-label">DeepSeek API ключ</label>
+        <input
+          id="api-key-input"
+          type="password"
+          class="settings-input"
+          placeholder="sk-xxxxxxxxxxxxxxxx"
+          autocomplete="off"
+        />
+        <p id="settings-hint" class="settings-hint">
+          Получите ключ на <a href="https://platform.deepseek.com/api_keys" target="_blank">platform.deepseek.com/api_keys</a>
+        </p>
+      </div>
+      <button id="btn-save-key" class="btn btn-primary btn-full">Сохранить</button>
+    </div>
+  </div>
+
+  <!-- Экран ошибки -->
+  <div id="screen-error" class="screen" style="display: none;">
+    <div class="error-content">
+      <div class="error-icon">⚠️</div>
+      <div class="error-title">Ошибка анализа</div>
+      <div id="error-message" class="error-message"></div>
+      <button id="btn-retry" class="btn btn-primary">Попробовать снова</button>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
