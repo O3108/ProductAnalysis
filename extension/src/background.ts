@@ -13,6 +13,8 @@ export interface AnalysisResult {
   pros: string[];
   cons: string[];
   recommendation: string;
+  counterfeitRisk: 'low' | 'medium' | 'high';
+  counterfeitReason?: string;
 }
 
 export interface AnalysisResponse {
@@ -32,13 +34,26 @@ const systemPrompt = `Ты эксперт по анализу автозапча
 
 Критерии оценки (по убыванию важности):
 1. Производитель — оригинал (совпадает с маркой авто или известный OEM) > известный бренд запчастей > неизвестный
-2. Цена — чем ниже относительно среднего по списку, тем лучше
+2. Цена — для жидкостей сравнивай по "Цена за литр" (₽/л), а не по общей цене. Для остальных товаров — по общей цене. Чем ниже относительно среднего по списку, тем лучше
 3. Дата доставки — чем раньше, тем лучше
 
 Правила:
 - Оригинальная деталь по средней цене лучше дешёвого аналога
 - Если цена не указана — score не выше 4
 - Не придумывай характеристики детали — оценивай только по данным из списка
+
+ОЦЕНКА РИСКА ПОДДЕЛКИ (counterfeitRisk):
+Для каждого товара оцени риск подделки на основе следующих факторов:
+1. Популярность бренда — известные бренды (Bosch, Castrol, Mobil, Shell, Total, ZIC, оригинальные запчасти) подделывают чаще
+2. Цена — если известный бренд стоит значительно дешевле среднего (>30%) — высокий риск подделки
+3. Тип товара — моторные масла, фильтры, тормозные колодки подделывают чаще всего
+
+Уровни риска:
+- "high" — известный бренд по подозрительно низкой цене, или самые подделываемые категории (масла премиум-брендов)
+- "medium" — популярный бренд по средней цене, или менее известный бренд по низкой цене
+- "low" — малоизвестный бренд, оригинальные запчасти по адекватной цене, или товары которые редко подделывают
+
+В поле counterfeitReason кратко объясни почему такой уровень риска (1 предложение).
 
 Отвечай СТРОГО в формате JSON (без markdown блоков):
 {
@@ -52,7 +67,9 @@ const systemPrompt = `Ты эксперт по анализу автозапча
       "verdict": "Оригинальная деталь по лучшей цене",
       "pros": ["плюс 1", "плюс 2"],
       "cons": ["минус 1"],
-      "recommendation": "Рекомендуется"
+      "recommendation": "Рекомендуется",
+      "counterfeitRisk": "low",
+      "counterfeitReason": "Оригинальная запчасть по рыночной цене"
     }
   ],
   "summary": "Краткий итог: диапазон цен, лучший производитель и предложение",
@@ -82,14 +99,39 @@ function normalizeContent(content: unknown): string {
   return String(content ?? '').trim();
 }
 
-const MAX_PRODUCTS = 20;
+const MAX_MANUFACTURERS = 10;
+
+function median(prices: number[]): number {
+  const sorted = [...prices].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
 
 function truncateProducts(products: Product[]): Product[] {
-  if (products.length <= MAX_PRODUCTS) return products;
-  // Берём топ по цене: сначала с ценой (сортируем по возрастанию), потом без
-  const withPrice = products.filter((p) => p.price > 0).sort((a, b) => a.price - b.price);
-  const withoutPrice = products.filter((p) => p.price <= 0);
-  return [...withPrice, ...withoutPrice].slice(0, MAX_PRODUCTS);
+  // Только товары с ценой
+  const withPrice = products.filter((p) => p.price > 0);
+
+  // Группируем все предложения по производителю
+  const groups = new Map<string, Product[]>();
+  for (const p of withPrice) {
+    const key = (p.manufacturer || 'Неизвестно').trim().toLowerCase();
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(p);
+  }
+
+  // От каждого производителя берём предложение с ценой, ближайшей к медиане
+  // (защита от аномально дешёвых подделок и аномально дорогих предложений)
+  const result: Product[] = [];
+  for (const [, offers] of groups) {
+    const med = median(offers.map((p) => p.price));
+    const closest = offers.reduce((best, p) =>
+      Math.abs(p.price - med) < Math.abs(best.price - med) ? p : best,
+    );
+    result.push(closest);
+  }
+
+  // Порядок появления на странице, до MAX_MANUFACTURERS
+  return result.slice(0, MAX_MANUFACTURERS);
 }
 
 function repairJson(raw: string): string {
@@ -128,7 +170,9 @@ async function analyzeProducts(products: Product[], apiKey: string): Promise<Ana
       const parts = [`${i + 1}. Производитель: ${p.manufacturer || 'Неизвестно'}`];
       if (p.partNumber) parts.push(`Артикул: ${p.partNumber}`);
       if (p.description) parts.push(`Деталь: ${p.description}`);
+      if (p.volume) parts.push(`Объём: ${p.volume} л`);
       parts.push(`Цена: ${p.price > 0 ? p.price + ' ₽' : 'нет данных'}`);
+      if (p.pricePerLiter) parts.push(`Цена за литр: ${Math.round(p.pricePerLiter)} ₽/л`);
       if (p.supplier) parts.push(`Поставщик: ${p.supplier}`);
       if (p.deliveryDate) parts.push(`Дата доставки: ${p.deliveryDate}`);
       return parts.join(', ');

@@ -15,6 +15,7 @@
     "webpack-cli": "^5.1.4"
   },
   "dependencies": {
-    "@huggingface/inference": "^4.13.12"
+    "@huggingface/inference": "^4.13.12",
+    "xlsx": "^0.18.5"
   }
 }
