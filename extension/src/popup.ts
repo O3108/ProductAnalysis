@@ -609,7 +609,8 @@ async function selectProducts() {
       preview.innerHTML += `<div class="preview-more">...и ещё ${currentProducts.length - 3}</div>`;
     }
   } catch (e) {
-    setStatus('Ошибка: обновите страницу exist.ru и попробуйте снова', 'error');
+    console.error('[ProductAnalyzer] Error getting products:', e);
+    setStatus('Ошибка: обновите страницу exist.ru и попробуйте снова. Если не помогло — переустановите расширение', 'error');
     $<HTMLButtonElement>('btn-select').disabled = false;
   }
 }
