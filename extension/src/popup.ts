@@ -45,7 +45,7 @@ function saveAnalysis(result: AnalysisResponse, products: Product[], url: string
   return new Promise((resolve) => {
     chrome.storage.local.get(['analysisHistory'], (data: StorageData) => {
       const history = data.analysisHistory || [];
-      
+
       const newItem: AnalysisHistoryItem = {
         id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         timestamp: Date.now(),
@@ -54,11 +54,11 @@ function saveAnalysis(result: AnalysisResponse, products: Product[], url: string
         result,
         products,
       };
-      
+
       // Добавляем в начало списка, ограничиваем до 50 записей
       history.unshift(newItem);
       const trimmedHistory = history.slice(0, 50);
-      
+
       chrome.storage.local.set({
         lastAnalysis: {
           timestamp: Date.now(),
@@ -467,17 +467,14 @@ function renderResults(data: AnalysisResponse) {
 
     const riskLabels = {
       low: 'Низкий риск подделки',
-      medium: 'Средний риск подделки',
       high: 'Высокий риск подделки'
     };
     const riskColors = {
       low: '#22c55e',
-      medium: '#f59e0b',
       high: '#ef4444'
     };
     const riskIcons = {
       low: '✓',
-      medium: '⚠',
       high: '⚠'
     };
 
@@ -485,7 +482,7 @@ function renderResults(data: AnalysisResponse) {
       <div class="card-header">
         <div class="card-rank">${medal}</div>
         <div class="card-info">
-          <div class="card-brand">${escapeHtml(item.brand || item.name)}</div>
+          <div class="card-brand">${escapeHtml(item.name || item.brand)}</div>
           <div class="card-price">${item.price > 0 ? item.price.toLocaleString('ru-RU') + ' ₽' : 'Цена не указана'}</div>
         </div>
         <div class="card-score" style="color: ${scoreColor}">
@@ -646,11 +643,11 @@ async function analyzeProducts() {
 
     const analysis = response.data as AnalysisResponse;
     currentAnalysis = analysis;
-    
+
     // Сохраняем результат
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     await saveAnalysis(analysis, currentProducts, tab?.url || '', tab?.title || 'Анализ exist.ru');
-    
+
     renderResults(analysis);
     showScreen('results');
   } catch (e: any) {
@@ -664,7 +661,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Регистрируем обработчики событий
   $<HTMLButtonElement>('btn-select').addEventListener('click', selectProducts);
   $<HTMLButtonElement>('btn-analyze').addEventListener('click', analyzeProducts);
-  
+
   $<HTMLButtonElement>('btn-history').addEventListener('click', showHistory);
 
   $<HTMLButtonElement>('btn-settings').addEventListener('click', async () => {
@@ -717,7 +714,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Проверяем, есть ли сохранённый результат
   const lastAnalysis = await getLastAnalysis();
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  
+
   if (lastAnalysis && tab?.url === lastAnalysis.url) {
     // Восстанавливаем результат для той же страницы
     currentAnalysis = lastAnalysis.result;
@@ -726,7 +723,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     showScreen('results');
     return;
   }
-  
+
   showScreen('main');
   await checkCurrentPage();
 });

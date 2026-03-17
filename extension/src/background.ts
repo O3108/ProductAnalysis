@@ -13,7 +13,7 @@ export interface AnalysisResult {
   pros: string[];
   cons: string[];
   recommendation: string;
-  counterfeitRisk: 'low' | 'medium' | 'high';
+  counterfeitRisk: 'low' | 'high';
   counterfeitReason?: string;
 }
 
@@ -23,11 +23,19 @@ export interface AnalysisResponse {
   bestChoice: string;
 }
 
+type PrecomputedCounterfeitRisk = AnalysisResult['counterfeitRisk'];
+
+function computePrecomputedCounterfeitRisk(price: number, med: number): PrecomputedCounterfeitRisk {
+  if (!(price > 0) || !(med > 0)) return 'high';
+  return price < med * 0.95 ? 'high' : 'low';
+}
+
 const systemPrompt = `Ты эксперт по анализу автозапчастей. Тебе дадут список предложений одной и той же детали от разных поставщиков с сайта exist.ru.
 
 Структура каждого предложения:
 - Производитель (бренд детали) — например "Geely", "Bosch", "LUK"
 - Артикул — номер детали
+- Риск подделки - low/high
 - Поставщик — продавец на exist.ru (не производитель)
 - Цена в рублях
 - Дата доставки — когда деталь будет доступна
@@ -41,26 +49,14 @@ const systemPrompt = `Ты эксперт по анализу автозапча
 Правила:
 - Оригинальная деталь по средней цене лучше дешёвого аналога
 - Если цена не указана — score не выше 4
-- Высокий риск подделки (counterfeitRisk: "high") — score не выше 5, даже если цена низкая
-- Средний риск подделки (counterfeitRisk: "medium") — снижай score на 1-2 балла
+- Высокий риск подделки (counterfeitRisk: "high") — снижай score на 1-2 балла
 - Не придумывай характеристики детали — оценивай только по данным из списка
 
 ОЦЕНКА РИСКА ПОДДЕЛКИ (counterfeitRisk):
-Для каждого товара оцени риск подделки на основе следующих факторов:
-1. Популярность бренда — известные бренды (Bosch, Castrol, Mobil, Shell, Total, ZIC и т.д.) и ОРИГИНАЛЬНЫЕ запчасти подделывают чаще всего
-2. Цена относительно других предложений:
-   - ВАЖНО: Оригинальные запчасти обычно стоят КАК известные бренды (Bosch, Castrol и т.д.) или ДОРОЖЕ
-   - Если ОРИГИНАЛ стоит значительно дешевле известных брендов (>20%) — это ВЫСОКИЙ риск подделки
-   - Если известный бренд стоит значительно дешевле среднего по известным брендам (>30%) — ВЫСОКИЙ риск
-   - Оригинал дешевле неизвестных китайских брендов — ОЧЕНЬ подозрительно
-3. Тип товара — моторные масла, фильтры, тормозные колодки, свечи подделывают чаще всего
-
-Уровни риска:
-- "high" — оригинал дешевле известных брендов, известный бренд по подозрительно низкой цене, премиум масла по низкой цене
-- "medium" — популярный бренд по средней цене, оригинал по цене известных брендов (нормально)
-- "low" — малоизвестный бренд, товары которые редко подделывают
-
-ВАЖНО: Оригинальные запчасти подделывают чаще всего! Если оригинал стоит дешевле Bosch/Castrol — это почти наверняка подделка.
+- В каждом входном предложении будет поле "Риск подделки" (high|low), рассчитанное по цене относительно медианной.
+- Ты ОБЯЗАН использовать его как итоговое значение counterfeitRisk для этого предложения и НЕ имеешь права переоценивать риск.
+- Правило: high если цена ниже медианной более чем на 5% (price < 0.95 * median), иначе low.
+- В counterfeitReason объясни риск через сравнение цены с медианной (значительно ниже / около медианной или выше).
 
 В поле counterfeitReason кратко объясни почему такой уровень риска (1 предложение).
 
@@ -116,7 +112,7 @@ function median(prices: number[]): number {
   return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
-function truncateProducts(products: Product[]): Product[] {
+function truncateProducts(products: Product[]): { products: Product[], med: number } {
   // Только товары с ценой
   const withPrice = products.filter((p) => p.price > 0);
   const med = median(withPrice.map((p) => p.price));
@@ -140,7 +136,8 @@ function truncateProducts(products: Product[]): Product[] {
   }
 
   // Порядок появления на странице, до MAX_MANUFACTURERS
-  return result.slice(0, MAX_MANUFACTURERS);
+  return {products: result, med}
+    // .slice(0, MAX_MANUFACTURERS);
 }
 
 function repairJson(raw: string): string {
@@ -174,7 +171,7 @@ function repairJson(raw: string): string {
 async function analyzeProducts(products: Product[], apiKey: string): Promise<AnalysisResponse> {
   const limited = truncateProducts(products);
 
-  const productList = limited
+  const productList = limited.products
     .map((p, i) => {
       const parts = [`${i + 1}. Производитель: ${p.manufacturer || 'Неизвестно'}`];
       if (p.partNumber) parts.push(`Артикул: ${p.partNumber}`);
@@ -182,13 +179,14 @@ async function analyzeProducts(products: Product[], apiKey: string): Promise<Ana
       if (p.volume) parts.push(`Объём: ${p.volume} л`);
       parts.push(`Цена: ${p.price > 0 ? p.price + ' ₽' : 'нет данных'}`);
       if (p.pricePerLiter) parts.push(`Цена за литр: ${Math.round(p.pricePerLiter)} ₽/л`);
+      parts.push(`Риск подделки: ${computePrecomputedCounterfeitRisk(p.price, limited.med)}`);
       if (p.supplier) parts.push(`Поставщик: ${p.supplier}`);
       if (p.deliveryDate) parts.push(`Дата доставки: ${p.deliveryDate}`);
       return parts.join(', ');
     })
     .join('\n');
 
-  const userPrompt = `Список предложений для анализа (${limited.length} шт.):\n${productList}\n\nПроанализируй по критерию цена/качество и верни JSON.`;
+  const userPrompt = `Список предложений для анализа (${limited.products.length} шт.):\n${productList}\n\nМедианная цена: ${limited.med}.`;
 
   const resp = await fetch(DEEPSEEK_API_URL, {
     method: 'POST',
