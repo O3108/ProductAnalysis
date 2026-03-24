@@ -114,13 +114,13 @@ function median(prices: number[]): number {
 
 function truncateProducts(products: Product[]): { products: Product[], med: number } {
   // Только товары с ценой
-  const withPrice = products.filter((p) => p.price > 0);
-  const med = median(withPrice.map((p) => p.price));
+  const withPrice = products.filter((p) => (p.pricePerLiter || p.price) > 0);
+  const med = median(withPrice.map((p) => p.pricePerLiter || p.price));
 
   // Группируем все предложения по производителю
   const groups = new Map<string, Product[]>();
   for (const p of withPrice) {
-    const key = (p.manufacturer || 'Неизвестно').trim().toLowerCase();
+    const key = `${(p.manufacturer || 'Неизвестно').trim().toLowerCase()}_${(p.description || 'Неизвестно').trim().toLowerCase()}`;
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(p);
   }
@@ -129,8 +129,12 @@ function truncateProducts(products: Product[]): { products: Product[], med: numb
   // (защита от аномально дешёвых подделок и аномально дорогих предложений)
   const result: Product[] = [];
   for (const [, offers] of groups) {
-    const closest = offers.reduce((best, p) =>
-      Math.abs(p.price - med) < Math.abs(best.price - med) ? p : best,
+    const closest = offers.reduce((best, p) => {
+      const bestPrice = best.pricePerLiter || best.price
+      const price = p.pricePerLiter || p.price
+
+      return Math.abs(price - med) < Math.abs(bestPrice - med) ? p : best;
+      }
     );
     result.push(closest);
   }
@@ -179,9 +183,10 @@ async function analyzeProducts(products: Product[], apiKey: string): Promise<Ana
       if (p.volume) parts.push(`Объём: ${p.volume} л`);
       parts.push(`Цена: ${p.price > 0 ? p.price + ' ₽' : 'нет данных'}`);
       if (p.pricePerLiter) parts.push(`Цена за литр: ${Math.round(p.pricePerLiter)} ₽/л`);
-      parts.push(`Риск подделки: ${computePrecomputedCounterfeitRisk(p.price, limited.med)}`);
+      parts.push(`Риск подделки: ${computePrecomputedCounterfeitRisk(p.pricePerLiter || p.price, limited.med)}`);
       if (p.supplier) parts.push(`Поставщик: ${p.supplier}`);
       if (p.deliveryDate) parts.push(`Дата доставки: ${p.deliveryDate}`);
+
       return parts.join(', ');
     })
     .join('\n');
